@@ -74,38 +74,84 @@ def _is_closed_job(job: EnrichedJob) -> bool:
         return False
 
 
+def _is_welfare_public_job(job: EnrichedJob) -> bool:
+    """웹사이트 기본 필터(장애인일자리 OFF)와 동일한 판정."""
+    import re
+    t = job.title or ""
+    emp = job.employment_type or ""
+    if emp == "무기계약직" and re.search(r"교육공무직", t):
+        return False
+    if emp == "공공일자리":
+        return True
+    return bool(re.search(r"장애인\s*(?:일반형|복지|특화형|맞춤형)?\s*일자리\s*(?:지원)?(?:사업)?|행정도우미|권리중심", t))
+
+
+def _is_part_time_job(job: EnrichedJob) -> bool:
+    """웹사이트 기본 필터(전일제 주5일↑)와 동일한 단시간 판정."""
+    import re
+    if job.is_part_time:
+        return True
+    emp = job.employment_type or ""
+    wh = job.work_hours or ""
+    title = job.title or ""
+    if emp == "시간제":
+        return True
+    if re.search(r"단시간|시간제|파트타임|격일|주\s*[1-4]일", wh):
+        return True
+    if re.search(r"일\s*[1-6](?:\.\d)?\s*시간|하루\s*[1-6](?:\.\d)?\s*시간", f"{wh} {title}"):
+        return True
+    m_wk = re.search(r"주\s*(\d{1,2})\s*시간", wh)
+    if m_wk and int(m_wk.group(1)) <= 34:
+        return True
+    return False
+
+
+def _matches_default_filter(job: EnrichedJob) -> bool:
+    """웹사이트 기본 셋팅 필터와 100% 동일:
+    - 생활권: 전체
+    - 기관 구분: 공공·지자체 (공공기관, 지자체)
+    - 접수 상태: 접수중
+    - 근무 형태: 전일제 (주5일↑)
+    - 장애 정도: 경증도 지원 가능 (중증만 가능 제외)
+    - 계약 기간: 전체
+    - 장애인일자리: OFF (제외)
+    """
+    if _is_closed_job(job):
+        return False
+    if _is_welfare_public_job(job):
+        return False
+    if (job.org_type or "민간기업") not in ("공공기관", "지자체"):
+        return False
+    if _is_part_time_job(job):
+        return False
+    if (job.disability_severity or "상세 확인") == "중증만 가능":
+        return False
+    return True
+
+
 def build_briefing_text(jobs: List[EnrichedJob], new_count: int, briefing: Optional[dict] = None) -> str:
     today_str = datetime.now().strftime("%Y-%m-%d")
-    active_jobs = [j for j in jobs if not _is_closed_job(j)]
-    new_active = [j for j in active_jobs if j.is_new]
+    matched_jobs = [j for j in jobs if _matches_default_filter(j)]
+    new_matched = [j for j in matched_jobs if j.is_new]
 
-    # 신규 접수중 공고 정렬: 전일제·경증가능·일반채용 우선 → 거리 가까운 순 → 공공/지자체/대기업 우선
-    org_priority = {"공공기관": 0, "지자체": 0, "대기업": 1, "외국계": 1, "표준사업장": 2}
-    new_active.sort(
-        key=lambda j: (
-            1 if j.employment_type == "공공일자리" else 0,
-            1 if j.disability_severity == "중증만 가능" else 0,
-            1 if j.is_part_time else 0,
-            j.distance_rank,
-            org_priority.get(j.org_type, 3),
-        )
-    )
+    # 거리 가까운 순 정렬 (고양 → 인접 → 재택 → 수도권)
+    new_matched.sort(key=lambda j: (j.distance_rank, j.deadline or "9999"))
 
-    if not new_active:
+    if not new_matched:
         lines = [
             f"[장애인 채용 브리핑 · {today_str}]",
-            f"오늘 체크 완료! 신규 접수 0건 (접수중 {len(active_jobs)}건 유지)",
-            "새로 올라온 접수중 공고가 없습니다.",
+            f"오늘 체크 완료! 맞춤 신규 0건 (접수중 {len(matched_jobs)}건 유지)",
+            "기본 필터(공공·전일제·경증가능)에 맞는 신규 공고가 없습니다.",
         ]
         return "\n".join(lines)[:480]
 
     lines = [
         f"[장애인 채용 브리핑 · {today_str}]",
-        f"신규 접수 {len(new_active)}건 (전체 접수중 {len(active_jobs)}건)",
+        f"맞춤 신규 {len(new_matched)}건 (공공·전일제·경증가능 · 접수중 {len(matched_jobs)}건)",
         "",
         "★ 신규 접수 공고",
     ]
-    shown = new_active[:5]
+    shown = new_matched[:5]
     for j in shown:
         z = (
             "고양"
@@ -115,9 +161,9 @@ def build_briefing_text(jobs: List[EnrichedJob], new_count: int, briefing: Optio
         lines.append(f"• [{z}/{j.org_type}] {j.company}")
         lines.append(f"  {j.title[:28]} (마감 {j.deadline})")
 
-    remaining = len(new_active) - len(shown)
+    remaining = len(new_matched) - len(shown)
     if remaining > 0:
-        lines.append(f"... 외 신규 {remaining}건 (사이트에서 확인)")
+        lines.append(f"... 외 맞춤 신규 {remaining}건 (사이트에서 확인)")
 
     text = "\n".join(lines)
     return text[:480]
