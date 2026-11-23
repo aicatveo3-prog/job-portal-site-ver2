@@ -1,75 +1,75 @@
 {
-  "updated_at": "2026-11-22 21:15",
-  "updated_date": "2026-11-22",
-  "duration_sec": 571.2,
+  "updated_at": "2026-11-24 08:35",
+  "updated_date": "2026-11-24",
+  "duration_sec": 755.3,
   "model": "opencode-go/deepseek-v4.1-flash",
-  "total_jobs": 248,
-  "new_jobs": 7,
-  "goyang_count": 25,
-  "nearby_count": 31,
-  "remote_count": 85,
-  "attachments_read_count": 29,
+  "total_jobs": 310,
+  "new_jobs": 38,
+  "goyang_count": 30,
+  "nearby_count": 43,
+  "remote_count": 99,
+  "attachments_read_count": 53,
   "zone_counts": {
-    "고양시 관내": 25,
-    "인접 출퇴근": 31,
-    "재택근무": 40,
-    "서울 기타": 79,
-    "경기 기타": 70,
-    "전국/기타": 3
+    "고양시 관내": 30,
+    "인접 출퇴근": 43,
+    "재택근무": 45,
+    "서울 기타": 95,
+    "경기 기타": 93,
+    "전국/기타": 4
   },
   "org_counts": {
-    "민간기업": 86,
-    "대기업": 31,
-    "복지·비영리": 32,
-    "지자체": 18,
-    "공공기관": 65,
-    "외국계": 16
+    "민간기업": 102,
+    "대기업": 38,
+    "복지·비영리": 43,
+    "지자체": 25,
+    "공공기관": 83,
+    "외국계": 19
   },
   "ai_stats": {
-    "cached": 0,
-    "ai_success": 82,
-    "ai_filtered_out": 8,
-    "fallback": 6
+    "cached": 17,
+    "ai_success": 109,
+    "ai_filtered_out": 33,
+    "fallback": 12
   },
   "sources": [
     {
       "id": "goyang",
       "name": "고양시 일자리망",
       "status": "ok",
-      "count": 7,
-      "elapsed_sec": 6.6,
+      "count": 9,
+      "elapsed_sec": 21.5,
       "error": ""
     },
     {
       "id": "kead",
       "name": "한국장애인고용공단",
       "status": "ok",
-      "count": 59,
-      "elapsed_sec": 58.2,
+      "count": 71,
+      "elapsed_sec": 71.7,
       "error": ""
     },
     {
       "id": "work24",
       "name": "고용24",
       "status": "ok",
-      "count": 41,
-      "elapsed_sec": 0.0,
+      "count": 48,
+      "elapsed_sec": 22.6,
       "error": ""
     },
     {
       "id": "jobcnt",
       "name": "서울시장애인일자리센터",
       "status": "ok",
-      "count": 53,
-      "elapsed_sec": 10.8,
+      "count": 61,
+      "elapsed_sec": 12.4,
       "error": ""
     },
     {
       "id": "alio",
       "name": "잡알리오",
       "status": "ok",
-      "count": 36,
-      "elapsed_sec": 63.2,
+      "count": 52,
+      "elapsed_sec": 57.6,
       "error": ""
     },
     {
@@ -77,23 +77,23 @@
       "name": "사람인",
       "status": "ok",
       "count": 6,
-      "elapsed_sec": 0.0,
+      "elapsed_sec": 52.2,
       "error": ""
     },
     {
       "id": "modoojob",
       "name": "모두의잡",
       "status": "ok",
-      "count": 20,
-      "elapsed_sec": 0.0,
+      "count": 26,
+      "elapsed_sec": 16.3,
       "error": ""
     },
     {
       "id": "jobaba",
       "name": "잡아바",
       "status": "ok",
-      "count": 28,
-      "elapsed_sec": 0.0,
+      "count": 40,
+      "elapsed_sec": 0.3,
       "error": ""
     }
   ]
