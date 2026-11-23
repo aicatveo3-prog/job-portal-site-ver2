@@ -4,12 +4,14 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-ROOT_DIR = Path(__file__).resolve().parent
+SRC_DIR = Path(__file__).resolve().parent
+ROOT_DIR = SRC_DIR.parent
+load_dotenv(SRC_DIR / ".env")
 load_dotenv(ROOT_DIR / ".env")
 
 DOCS_DIR = ROOT_DIR / "docs"
 DATA_DIR = DOCS_DIR / "data"
-STATE_DIR = ROOT_DIR / "state"
+STATE_DIR = SRC_DIR / "state"
 LOGS_DIR = STATE_DIR / "logs"
 
 JOBS_JSON_PATH = DATA_DIR / "jobs.json"

@@ -6,7 +6,9 @@ venv/
 
 # Secrets & local runtime state
 .env
+src/.env
 state/
+src/state/
 *.log
 
 # OS
