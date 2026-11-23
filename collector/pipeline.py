@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import time
 from datetime import datetime
@@ -49,6 +50,25 @@ def _load_prev_jobs() -> List[EnrichedJob]:
         return out
     except Exception:
         return []
+
+
+def _wait_for_internet(max_wait_sec: int = 60, log_fn=print) -> bool:
+    """PC 부팅 직후 와이파이/네트워크 지연 대비, 최대 60초까지 인터넷 연결 대기."""
+    deadline = time.time() + max_wait_sec
+    checked = 0
+    while time.time() <= deadline:
+        for host, port in (("1.1.1.1", 443), ("www.work24.go.kr", 443), ("github.com", 443)):
+            try:
+                with socket.create_connection((host, port), timeout=3):
+                    if checked > 0:
+                        log_fn(f"[네트워크] 인터넷 연결 확인됨 ({checked * 3}초 대기)")
+                    return True
+            except OSError:
+                continue
+        checked += 1
+        time.sleep(3)
+    log_fn("[네트워크] 60초 동안 인터넷 연결을 확인하지 못해 이번 실행을 건너뜁니다. (다음 기회에 자동 재시도)")
+    return False
 
 
 def _acquire_lock() -> bool:
@@ -130,6 +150,9 @@ def run_pipeline(
     limit = limit_per_source or config.MAX_PER_SOURCE
 
     try:
+        if not _wait_for_internet(max_wait_sec=60, log_fn=log):
+            return {"skipped": True, "reason": "no_internet"}
+
         if notify:
             send_toast(
                 "장애인 채용공고 수집 시작",
@@ -280,15 +303,17 @@ def run_pipeline(
         )
 
         # 선택: GitHub 자동 푸시
-        _auto_git_push(log, len(final_jobs), new_count)
+        pushed = _auto_git_push(log, len(final_jobs), new_count)
 
         # 알림 전송
         if notify:
             err_sources = len(source_reports) - ok_sources
             toast_msg = (
-                f"총 {len(final_jobs)}건 (신규 {new_count}건) 반영 완료! "
+                f"총 {len(final_jobs)}건 (신규 {new_count}건) · "
                 f"고양 {meta['goyang_count']} · 인접 {meta['nearby_count']} · 재택 {meta['remote_count']}"
             )
+            if pushed:
+                toast_msg += " · 사이트 자동 업데이트 완료"
             if err_sources > 0:
                 toast_msg += f" (일부 {err_sources}곳 오류)"
             send_toast("장애인 채용공고 수집 완료", toast_msg)

@@ -81,9 +81,14 @@ def build_briefing_text(jobs: List[EnrichedJob], new_count: int, briefing: Optio
     nearby = [j for j in active_jobs if j.distance_zone == "인접 출퇴근"]
     remote = [j for j in active_jobs if j.is_remote]
 
+    status_line = (
+        f"오늘 체크 완료! 신규 {new_count}건 (접수중 {len(active_jobs)}건)"
+        if new_count > 0
+        else f"오늘 체크 완료! 신규 0건 (접수중 {len(active_jobs)}건 유지)"
+    )
     lines = [
         f"[장애인 채용 브리핑 · {today_str}]",
-        f"접수중 {len(active_jobs)}건 (신규 {new_count}건)",
+        status_line,
         f"고양 {len(goyang)}건 / 인접 {len(nearby)}건 / 재택 {len(remote)}건",
         "",
     ]
