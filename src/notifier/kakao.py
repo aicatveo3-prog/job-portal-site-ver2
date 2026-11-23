@@ -77,45 +77,47 @@ def _is_closed_job(job: EnrichedJob) -> bool:
 def build_briefing_text(jobs: List[EnrichedJob], new_count: int, briefing: Optional[dict] = None) -> str:
     today_str = datetime.now().strftime("%Y-%m-%d")
     active_jobs = [j for j in jobs if not _is_closed_job(j)]
-    goyang = [j for j in active_jobs if j.distance_zone == "고양시 관내"]
-    nearby = [j for j in active_jobs if j.distance_zone == "인접 출퇴근"]
-    remote = [j for j in active_jobs if j.is_remote]
+    new_active = [j for j in active_jobs if j.is_new]
 
-    status_line = (
-        f"오늘 체크 완료! 신규 {new_count}건 (접수중 {len(active_jobs)}건)"
-        if new_count > 0
-        else f"오늘 체크 완료! 신규 0건 (접수중 {len(active_jobs)}건 유지)"
+    # 신규 접수중 공고 정렬: 전일제·경증가능·일반채용 우선 → 거리 가까운 순 → 공공/지자체/대기업 우선
+    org_priority = {"공공기관": 0, "지자체": 0, "대기업": 1, "외국계": 1, "표준사업장": 2}
+    new_active.sort(
+        key=lambda j: (
+            1 if j.employment_type == "공공일자리" else 0,
+            1 if j.disability_severity == "중증만 가능" else 0,
+            1 if j.is_part_time else 0,
+            j.distance_rank,
+            org_priority.get(j.org_type, 3),
+        )
     )
+
+    if not new_active:
+        lines = [
+            f"[장애인 채용 브리핑 · {today_str}]",
+            f"오늘 체크 완료! 신규 접수 0건 (접수중 {len(active_jobs)}건 유지)",
+            "새로 올라온 접수중 공고가 없습니다.",
+        ]
+        return "\n".join(lines)[:480]
+
     lines = [
         f"[장애인 채용 브리핑 · {today_str}]",
-        status_line,
-        f"고양 {len(goyang)}건 / 인접 {len(nearby)}건 / 재택 {len(remote)}건",
+        f"신규 접수 {len(new_active)}건 (전체 접수중 {len(active_jobs)}건)",
         "",
+        "★ 신규 접수 공고",
     ]
+    shown = new_active[:5]
+    for j in shown:
+        z = (
+            "고양"
+            if j.distance_zone == "고양시 관내"
+            else ("재택" if j.is_remote else "인접" if j.distance_zone == "인접 출퇴근" else "수도권")
+        )
+        lines.append(f"• [{z}/{j.org_type}] {j.company}")
+        lines.append(f"  {j.title[:28]} (마감 {j.deadline})")
 
-    # 접수중 + 전일제 + 경증 지원 가능 + 공공/지자체/대기업 우선 선별 (마감 공고 제외!)
-    eligible = [
-        j for j in active_jobs
-        if not j.is_part_time
-        and j.disability_severity != "중증만 가능"
-        and j.employment_type != "공공일자리"
-    ]
-    highlights = [j for j in eligible if j.is_new and j.distance_rank <= 3][:4]
-    if len(highlights) < 4:
-        for j in eligible:
-            if j not in highlights and j.org_type in ("공공기관", "지자체", "대기업", "외국계"):
-                highlights.append(j)
-            if len(highlights) >= 4:
-                break
-    if not highlights:
-        highlights = active_jobs[:4]
-
-    if highlights:
-        lines.append("★ 주요 접수중 공고")
-        for j in highlights[:4]:
-            z = "고양" if j.distance_zone == "고양시 관내" else ("재택" if j.is_remote else "인접" if j.distance_zone == "인접 출퇴근" else "수도권")
-            lines.append(f"• [{z}/{j.org_type}] {j.company}")
-            lines.append(f"  {j.title[:26]} (마감 {j.deadline})")
+    remaining = len(new_active) - len(shown)
+    if remaining > 0:
+        lines.append(f"... 외 신규 {remaining}건 (사이트에서 확인)")
 
     text = "\n".join(lines)
     return text[:480]
