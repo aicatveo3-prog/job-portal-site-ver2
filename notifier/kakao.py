@@ -59,36 +59,58 @@ def refresh_access_token(tokens: dict) -> Optional[dict]:
         return None
 
 
+def _is_closed_job(job: EnrichedJob) -> bool:
+    import re
+    from datetime import date
+    if job.is_closed_in_text:
+        return True
+    dl = (job.deadline or "").strip()
+    m = re.match(r"^(20\d{2})-(\d{2})-(\d{2})$", dl)
+    if not m:
+        return False
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3))) < date.today()
+    except ValueError:
+        return False
+
+
 def build_briefing_text(jobs: List[EnrichedJob], new_count: int, briefing: Optional[dict] = None) -> str:
     today_str = datetime.now().strftime("%Y-%m-%d")
-    goyang = [j for j in jobs if j.distance_zone == "고양시 관내"]
-    nearby = [j for j in jobs if j.distance_zone == "인접 출퇴근"]
-    remote = [j for j in jobs if j.is_remote]
+    active_jobs = [j for j in jobs if not _is_closed_job(j)]
+    goyang = [j for j in active_jobs if j.distance_zone == "고양시 관내"]
+    nearby = [j for j in active_jobs if j.distance_zone == "인접 출퇴근"]
+    remote = [j for j in active_jobs if j.is_remote]
 
     lines = [
-        f"📢 [{today_str}] 장애인 채용 브리핑",
-        f"총 {len(jobs)}건 (신규 {new_count}건) · 🟢고양 {len(goyang)} · 🔵인접 {len(nearby)} · 🟣재택 {len(remote)}",
+        f"[장애인 채용 브리핑 · {today_str}]",
+        f"접수중 {len(active_jobs)}건 (신규 {new_count}건)",
+        f"고양 {len(goyang)}건 / 인접 {len(nearby)}건 / 재택 {len(remote)}건",
+        "",
     ]
 
-    if briefing and briefing.get("picks"):
-        if briefing.get("headline"):
-            lines.append(f"💡 {briefing['headline']}")
-        lines.append("")
-        lines.append("✨ DeepSeek 4.1 오늘의 TOP 3 추천")
-        for p in briefing["picks"][:3]:
-            lines.append(f"{p.get('rank', '')}. [{p.get('badge', '')}] {p.get('company', '')}")
-            lines.append(f"   {str(p.get('title', ''))[:28]} ({str(p.get('salary_text', ''))[:16]})")
-            if p.get("reason"):
-                lines.append(f"   → {str(p['reason'])[:55]}")
-    else:
-        lines.append("")
-        highlights = [j for j in jobs if j.is_new and j.distance_rank <= 3][:4] or jobs[:4]
-        if highlights:
-            lines.append("✨ 오늘의 추천 공고")
-            for j in highlights:
-                badge = "🟢" if j.distance_zone == "고양시 관내" else ("🟣" if j.is_remote else "🔵")
-                lines.append(f"{badge} [{j.org_type}] {j.company}")
-                lines.append(f"  {j.title[:28]} ({j.salary_text[:14]})")
+    # 접수중 + 전일제 + 경증 지원 가능 + 공공/지자체/대기업 우선 선별 (마감 공고 제외!)
+    eligible = [
+        j for j in active_jobs
+        if not j.is_part_time
+        and j.disability_severity != "중증만 가능"
+        and j.employment_type != "공공일자리"
+    ]
+    highlights = [j for j in eligible if j.is_new and j.distance_rank <= 3][:4]
+    if len(highlights) < 4:
+        for j in eligible:
+            if j not in highlights and j.org_type in ("공공기관", "지자체", "대기업", "외국계"):
+                highlights.append(j)
+            if len(highlights) >= 4:
+                break
+    if not highlights:
+        highlights = active_jobs[:4]
+
+    if highlights:
+        lines.append("★ 주요 접수중 공고")
+        for j in highlights[:4]:
+            z = "고양" if j.distance_zone == "고양시 관내" else ("재택" if j.is_remote else "인접" if j.distance_zone == "인접 출퇴근" else "수도권")
+            lines.append(f"• [{z}/{j.org_type}] {j.company}")
+            lines.append(f"  {j.title[:26]} (마감 {j.deadline})")
 
     text = "\n".join(lines)
     return text[:480]

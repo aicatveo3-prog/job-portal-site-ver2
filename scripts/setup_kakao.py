@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import socket
 import sys
+import threading
 import urllib.parse
 import webbrowser
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import httpx
 
@@ -17,24 +19,53 @@ import config
 
 REDIRECT_URI = "http://localhost:5050/callback"
 AUTH_CODE: dict[str, str] = {}
+AUTH_URL_HOLDER: dict[str, str] = {}
+DONE_EVENT = threading.Event()
+
+
+class DualStackServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+class IPv6Server(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+    allow_reuse_address = True
+    daemon_threads = True
 
 
 class CallbackHandler(BaseHTTPRequestHandler):
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(5.0)
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path in ("/", "/start"):
+            self.send_response(302)
+            self.send_header("Location", AUTH_URL_HOLDER.get("url", "https://kauth.kakao.com"))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            return
         qs = urllib.parse.parse_qs(parsed.query)
         if "code" in qs:
             AUTH_CODE["code"] = qs["code"][0]
+            body = "<h2>⏳ 카카오 로그인 성공! 토큰 발급 및 테스트 발송을 처리 중입니다... (터미널/채팅 결과를 확인하세요)</h2>".encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
             self.end_headers()
-            self.wfile.write(
-                "<h2>✅ 카카오 인증 완료! 이 창을 닫고 터미널로 돌아가세요.</h2>".encode("utf-8")
-            )
+            self.wfile.write(body)
+            DONE_EVENT.set()
         else:
-            self.send_response(400)
+            body = f"<h3>인증 대기/오류: {parsed.path} {parsed.query}</h3>".encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
             self.end_headers()
-            self.wfile.write(b"Missing code parameter")
+            self.wfile.write(body)
 
     def log_message(self, format, *args):
         return
@@ -56,7 +87,9 @@ def main() -> None:
         print("❌ REST API 키가 비어 있습니다.")
         return
 
-    client_secret = config.KAKAO_CLIENT_SECRET or input("Client Secret (설정 안 했으면 그냥 Enter): ").strip()
+    client_secret = config.KAKAO_CLIENT_SECRET
+    if not client_secret and sys.stdin and sys.stdin.isatty():
+        client_secret = input("Client Secret (설정 안 했으면 그냥 Enter): ").strip()
 
     auth_url = (
         "https://kauth.kakao.com/oauth/authorize"
@@ -65,14 +98,32 @@ def main() -> None:
         "&response_type=code"
         "&scope=talk_message"
     )
-    print("\n브라우저로 카카오 로그인 창을 엽니다...")
-    webbrowser.open(auth_url)
+    AUTH_URL_HOLDER["url"] = auth_url
+    servers = []
+    srv4 = DualStackServer(("127.0.0.1", 5050), CallbackHandler)
+    servers.append(srv4)
+    threading.Thread(target=srv4.serve_forever, daemon=True).start()
+    try:
+        srv6 = IPv6Server(("::1", 5050), CallbackHandler)
+        servers.append(srv6)
+        threading.Thread(target=srv6.serve_forever, daemon=True).start()
+    except Exception:
+        pass
 
-    server = HTTPServer(("127.0.0.1", 5050), CallbackHandler)
-    print("카카오 로그인 및 동의 완료를 기다리는 중 (http://localhost:5050/callback)...")
-    while "code" not in AUTH_CODE:
-        server.handle_request()
-    server.server_close()
+    print("\n브라우저에서 http://localhost:5050/start 로 접속해 주세요...", flush=True)
+    if "--open" in sys.argv:
+        webbrowser.open("http://localhost:5050/start")
+    print("카카오 로그인 및 동의 완료를 기다리는 중 (http://localhost:5050/callback)...", flush=True)
+    DONE_EVENT.wait(timeout=600)
+    for srv in servers:
+        try:
+            srv.shutdown()
+            srv.server_close()
+        except Exception:
+            pass
+    if "code" not in AUTH_CODE:
+        print("❌ 인증 시간 초과 (10분). 다시 실행해 주세요.", flush=True)
+        return
 
     code = AUTH_CODE["code"]
     data = {
